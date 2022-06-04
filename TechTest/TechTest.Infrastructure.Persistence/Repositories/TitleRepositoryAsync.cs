@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -10,20 +11,20 @@ using TechTest.Infrastructure.Persistence.Repository;
 
 namespace TechTest.Infrastructure.Persistence.Repositories
 {
-    public class ProductRepositoryAsync : GenericRepositoryAsync<Product>, IProductRepositoryAsync
+    public class TitleRepositoryAsync : GenericRepositoryAsync<Title>, ITitleRepositoryAsync
     {
-        private readonly DbSet<Product> _products;
+        private readonly DbSet<Title> _titles;
 
-        public ProductRepositoryAsync(IServiceProvider service) : base(service)
+        public TitleRepositoryAsync(IServiceProvider service) : base(service)
         {
             var dbContext = (ApplicationDbContext)service.GetService(typeof(ApplicationDbContext));
-            _products = dbContext.Set<Product>();
+            _titles = dbContext.Set<Title>();
         }
 
-        public Task<bool> IsUniqueBarcodeAsync(string barcode)
+        public Task<bool> IsUniqueToolNameAsync(string toolName)
         {
-            return _products
-                .AllAsync(p => p.Barcode != barcode);
+            return _titles
+                .AllAsync(p => p.ToolName != toolName);
         }
     }
 }

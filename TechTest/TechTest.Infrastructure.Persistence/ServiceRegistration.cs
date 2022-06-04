@@ -28,9 +28,12 @@ namespace TechTest.Infrastructure.Persistence
                    configuration.GetConnectionString("DefaultConnection"),
                    b => b.MigrationsAssembly(typeof(ApplicationDbContext).Assembly.FullName)));
             }
+            services.AddStackExchangeRedisCache(options => { options.Configuration = configuration["RedisCacheUrl"]; });
+
             #region Repositories
-            services.AddTransient(typeof(IGenericRepositoryAsync<>), typeof(GenericRepositoryAsync<>));
-            services.AddTransient<IProductRepositoryAsync, ProductRepositoryAsync>();
+            services.AddScoped(typeof(IGenericRepositoryAsync<>), typeof(GenericRepositoryAsync<>));
+            services.AddScoped(typeof(ITitleRepositoryAsync), typeof(TitleRepositoryAsync));
+            services.AddScoped(typeof(IProductRepositoryAsync), typeof(ProductRepositoryAsync));
             #endregion
         }
     }

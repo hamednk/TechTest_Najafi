@@ -1,9 +1,13 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using EFCore.BulkExtensions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
+using System.Transactions;
 using TechTest.Application.Interfaces;
 using TechTest.Infrastructure.Persistence.Contexts;
 
@@ -12,10 +16,12 @@ namespace TechTest.Infrastructure.Persistence.Repository
     public class GenericRepositoryAsync<T> : IGenericRepositoryAsync<T> where T : class
     {
         private readonly ApplicationDbContext _dbContext;
+        private readonly IDistributedCache _cache;
 
-        public GenericRepositoryAsync(ApplicationDbContext dbContext)
+        public GenericRepositoryAsync(IServiceProvider service)
         {
-            _dbContext = dbContext;
+            _dbContext = (ApplicationDbContext)service.GetService(typeof(ApplicationDbContext));
+            _cache = (IDistributedCache)service.GetService(typeof(IDistributedCache));
         }
 
         public virtual async Task<T> GetByIdAsync(int id)
@@ -40,6 +46,43 @@ namespace TechTest.Infrastructure.Persistence.Repository
             return entity;
         }
 
+        public async Task AddRangeAsync(IEnumerable<T> entity)
+        {
+            using (TransactionScope scope = new TransactionScope())
+            {
+                try
+                {
+                    await _dbContext.Set<T>().AddRangeAsync(entity);
+                    await _dbContext.SaveChangesAsync();
+                }
+                finally
+                {
+                    if (_dbContext != null)
+                        _dbContext.Dispose();
+                }
+
+                scope.Complete();
+            }
+        }
+
+        public async Task AddBulkAsync(List<T> entity)
+        {
+            using (TransactionScope scope = new TransactionScope())
+            {
+                try
+                {
+                    await _dbContext.BulkInsertAsync(entity, option => option.BatchSize = 500000);
+                }
+                finally
+                {
+                    if (_dbContext != null)
+                        _dbContext.Dispose();
+                }
+
+                scope.Complete();
+            }
+        }
+
         public async Task UpdateAsync(T entity)
         {
             _dbContext.Entry(entity).State = EntityState.Modified;
@@ -58,5 +101,35 @@ namespace TechTest.Infrastructure.Persistence.Repository
                  .Set<T>()
                  .ToListAsync();
         }
+
+        public async Task SetToRedisAsync(IEnumerable<T> entity, string cacheKey)
+        {
+            DistributedCacheEntryOptions options = new DistributedCacheEntryOptions()
+                   .SetAbsoluteExpiration(DateTime.Now.AddMinutes(5))
+                   .SetSlidingExpiration(TimeSpan.FromMinutes(3));
+
+            string cachedDataString = JsonSerializer.Serialize(entity.ToArray());
+            var dataToCache = Encoding.UTF8.GetBytes(cachedDataString);
+
+            await _cache.SetAsync(cacheKey, dataToCache, options);
+        }
+
+        public virtual async Task<List<T>> GetFromRedisAsync(string cacheKey)
+        {
+            byte[] cachedData = await _cache.GetAsync(cacheKey);
+
+            var cachedDataString = Encoding.UTF8.GetString(cachedData);
+            var data = JsonSerializer.Deserialize<List<T>>(cachedDataString);
+
+            return data;
+        }
+
+        public async Task RemoveFromRedisAsync(string cacheKey)
+        {
+            await _cache.RemoveAsync(cacheKey);
+        }
+
+
+
     }
 }
